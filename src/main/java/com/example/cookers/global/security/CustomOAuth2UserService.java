@@ -14,6 +14,7 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+
 import java.util.*;
 
 @Service
@@ -71,6 +72,39 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
             List<GrantedAuthority> authorityList = new ArrayList<>();
 
+            return new CustomOAuth2User(member.getUsername(), member.getPassword(), authorityList);
+        }else if (providerTypeCode.equals("NAVER")) { // 네이버 로그인인 경우
+            // OAuth2User에서 "response" 속성을 가져옵니다.
+            Map<String, Object> responseAttributes = (Map<String, Object>) oAuth2User.getAttribute("response");
+
+            // "response" 속성이 존재하지 않거나 비어있는 경우 사용자 정보를 가져올 수 없으므로 예외를 던집니다.
+            if (responseAttributes == null || responseAttributes.isEmpty()) {
+                throw new OAuth2AuthenticationException(new OAuth2Error("invalid_response", "No response attributes found for Naver login.", null));
+            }
+
+            // "response" 속성에서 필요한 정보를 추출합니다.
+            String oauthId = (String) responseAttributes.get("id");
+            String nickname = (String) responseAttributes.get("nickname");
+            String profileImageUrl = (String) responseAttributes.get("profile_image");
+
+            // 사용자의 고유한 username을 생성합니다.
+            String username = providerTypeCode + "__%s".formatted(oauthId);
+
+            // 생성된 username으로 회원을 찾습니다.
+            Optional<Member> existingMember = memberService.findByUsername(username);
+
+            // 이미 존재하는 회원인 경우 해당 회원 정보로 CustomOAuth2User를 생성하여 반환합니다.
+            if (existingMember.isPresent()) {
+                return new CustomOAuth2User(existingMember.get().getUsername(), existingMember.get().getPassword(), new ArrayList<>());
+            }
+
+            // 새로운 회원인 경우 회원을 생성합니다.
+            Member member = memberService.whenSocialLogin(providerTypeCode, username, nickname, profileImageUrl);
+
+            // 새로운 회원의 권한 목록을 생성합니다. (현재는 빈 목록)
+            List<GrantedAuthority> authorityList = new ArrayList<>();
+
+            // 생성된 CustomOAuth2User를 반환합니다.
             return new CustomOAuth2User(member.getUsername(), member.getPassword(), authorityList);
         }
 
